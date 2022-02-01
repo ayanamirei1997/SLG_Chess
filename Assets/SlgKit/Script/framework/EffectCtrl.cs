@@ -29,7 +29,8 @@ public class EffectCtrl
 
         // GameObject.Destroy(go,2F);
 
-
+        return;
+        // prefab有点问题
         //优化后
         if (this.spawnPool == null)
         {
