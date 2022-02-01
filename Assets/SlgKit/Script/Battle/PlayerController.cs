@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using static GameDefine;
 
 public class PlayerController : MonoBehaviour
@@ -55,6 +56,8 @@ public class PlayerController : MonoBehaviour
         animator = GetComponent<Animator>();
 
         worldPos2MapPos();
+
+        EventDispatcher.instance.DispatchEvent<PlayerController>(GameEventType.playerInitSkill, this);
     }
 
     // Update is called once per frame
@@ -170,7 +173,7 @@ public class PlayerController : MonoBehaviour
 
     private void MoveAnimaStop2Attack()
     {
-        this.Attack(attackTarget,true);
+        this.Active_Attack(attackTarget);
     }
 
     public IEnumerator GetMove2EnemyPath(Vector3 p_start, Vector3 end, uint minRange, System.Action<ABPath> v_path)
@@ -239,6 +242,8 @@ public class PlayerController : MonoBehaviour
 
     public void CancelMove()
     {
+        if (state == PlayerSate.wait) return;
+
         if (moveCor != null) StopCoroutine(moveCor);
 
         this.transform.position = this.startMovePos;
@@ -358,6 +363,14 @@ public class PlayerController : MonoBehaviour
         MoveStop();
     }
     System.Action e_moveStop;
+    internal Image hpImage;
+    internal Transform hpImageTrs;
+    internal int viewHp;
+
+    public uint[] skillcfg = new uint[4];
+    public Skill[] skill = new Skill[4];
+    public bool fastAttack;
+
     void MoveStop()
     {
         this.animator.CrossFade("idle", 0.2f);
@@ -512,11 +525,17 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     /// <param name="target"></param>
     /// <param name="targetCanStrikeBack">是否能还击</param>
-    internal void Attack(PlayerController target, bool targetCanStrikeBack)
+    internal void AttackByOrder(PlayerController target, bool targetCanStrikeBack)
     {
+
+       // if (targetCanStrikeBack)
+       // EventDispatcher.instance.DispatchEvent<PlayerController, PlayerController>(GameEventType.battle_Start,this, target);
+
         // throw new NotImplementedException();
 
-        this.lookatTarget(target);
+        this.viewHp = (int)this.attribute.hp;
+
+        //this.lookatTarget(target);
 
         uint dps = this.attribute.atk - target.attribute.def;
         // target.attribute.hp -= dps;
@@ -541,6 +560,83 @@ public class PlayerController : MonoBehaviour
          int[] dpsView = CalculateDps((int)dps, new float[] { 0.8f, 0.2f });
 
         StartCoroutine(AnimationAttack("attack01", hitFrames, dpsView, targetCanStrikeBack, target));
+    }
+
+
+    //主动攻击
+    public void Active_Attack(PlayerController target)
+    {
+
+        EventDispatcher.instance.DispatchEvent<PlayerController, PlayerController>(GameEventType.battle_Start, this, target);
+
+        var orderList = CalculateAttackOrder(this, target);
+
+        //为了让叠加加成计算准确,数值的加成效果在此基础上计算
+        //this.battleAttribute = this.attribute.Clone();
+        //target.battleAttribute = target.attribute.Clone();
+
+        this.lookatTarget(target);
+        target.lookatTarget(this);
+
+        if (orderList[0] != this)
+        {
+            //对手先攻
+            UICtrl.instance.ShowFastAttack(orderList[0]);
+
+            StartCoroutine(c_Active_Attack_Step02(orderList[0], orderList[1]));
+
+            // this.AttackByOrder(target, true);
+
+
+        }
+        else
+        {
+            this.AttackByOrder(target, true);
+        }
+    }
+
+    IEnumerator c_Active_Attack_Step02(PlayerController from, PlayerController to)
+    {
+        from.animator.CrossFade("ready", 0.2f);
+        //  yield return new (0.2f);
+        float length = getAnimationlength("ready");
+        yield return new WaitForSeconds(length);
+
+        from.AttackByOrder(to, true);
+    }
+
+    //需要注意的是并非状态机，而是动画资源的名字
+    float getAnimationlength(string name)
+    {
+        var clips = this.animator.runtimeAnimatorController.animationClips;
+
+        foreach (var item in clips)
+        {
+            if (item.name == name) return item.length;
+        }
+
+        return -1;
+    }
+
+
+
+    private PlayerController[] CalculateAttackOrder(PlayerController from, PlayerController to)
+    {
+        // throw new NotImplementedException();
+        PlayerController[] p = new PlayerController[2];
+        if (to.fastAttack)
+        {
+            p[0] = to;
+            p[1] = from;
+        }
+        else
+        {
+            p[0] = from;
+            p[1] = to;
+        }
+
+
+        return p;
     }
 
     /// <summary>
@@ -575,6 +671,11 @@ public class PlayerController : MonoBehaviour
             //输出动动作伤害数值
             Debug.Log("动画 伤害" + dpsView[i]);
             damageTarget.Damage_Ani();
+            //UICtrl.instance.SpwanDamage(dpsView[i], damageTarget.transform.position+Vector3.up*4);
+            EventDispatcher.instance.DispatchEvent<int, Vector3>(GameEventType.showHudDamage, dpsView[i], this.transform.position + Vector3.up * 4);
+            //血条更新
+            damageTarget.viewHp -= dpsView[i];
+            UICtrl.instance.UpdateHp(damageTarget);
         }
 
 
@@ -594,13 +695,20 @@ public class PlayerController : MonoBehaviour
         else
         {
             Debug.Log("对阵结束");
-            AttackRoundEnd(this, damageTarget);
+            AttackRoundEnd(damageTarget);
         }
     }
 
     void Damage_Ani()
     {
         this.animator.Play("damage01", 0, 0);
+
+      //  EventDispatcherDemo.instance.showHitEffect.Invoke(this,Vector3.zero);
+
+        EventDispatcher.instance.DispatchEvent<PlayerController,Vector3>(GameEventType.showHitEffect,this,this.transform.position+Vector3.up*2);
+        //EffectCtrl.instance.showHitEffect(this,this.transform.position+Vector3.up*2);
+
+
     }
 
     void lookatTarget(PlayerController target)
@@ -624,7 +732,7 @@ public class PlayerController : MonoBehaviour
         {
             this.animator.CrossFade("death", 0.2f);
             Debug.Log("阵亡 对阵结束");
-            AttackRoundEnd(this, attacker);
+            AttackRoundEnd( attacker);
         }
         else
         {
@@ -650,10 +758,10 @@ public class PlayerController : MonoBehaviour
         //在有效射程才能反击
         if (this.attribute.striking_Range_Max > dis && this.attribute.striking_Range_Min <= dis)
         {
-            this.Attack(attacker, false);
+            this.AttackByOrder(attacker, false);
         }else
         {
-            AttackRoundEnd(this, attacker);
+            AttackRoundEnd(attacker);
             Debug.Log("无法还击 对阵结束");
         }
     }
@@ -661,10 +769,14 @@ public class PlayerController : MonoBehaviour
 
 
 
-    void AttackRoundEnd(PlayerController a, PlayerController b)
+    void AttackRoundEnd(PlayerController target)
     {
-        a.state = PlayerSate.idel;
-        b.state = PlayerSate.idel;
+        // a.state = PlayerSate.idel;
+        // b.state = PlayerSate.idel;
+
+        EventDispatcher.instance.DispatchEvent<PlayerController, PlayerController>(GameEventType.battle_End, this, target);
+
+        GameCtrl.instance.AttackRoundEnd();
     }
 
 

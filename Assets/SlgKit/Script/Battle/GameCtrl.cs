@@ -3,20 +3,27 @@ using System.Collections;
 using System.Collections.Generic;
 using Pathfinding;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using static GameDefine;
 
 public class GameCtrl : MonoBehaviour
 {
     public static GameCtrl instance { get; private set; }
 
-     PlayerController[] players;
+    public PlayerController[] players;
     private Bounds mapBounds;
     PlayerController curSelect;
     public Sect mySect;
+    private bool battle;
+    private PlayerController attacker;
 
     private void Awake()
     {
         instance = this;
+
+        EffectCtrl.Init();
+
+        SkillSys.Instance.Init();
     }
 
 
@@ -28,6 +35,8 @@ public class GameCtrl : MonoBehaviour
         var gridGraph = (AstarPath.active.graphs[0] as GridGraph);
         var size = gridGraph.nodeSize;
         mapBounds = new Bounds(gridGraph.center, new Vector3(gridGraph.width * size, 10, size * gridGraph.depth));
+
+        UICtrl.instance.Init_HpImage();
     }
 
     //包围盒范围测试，只在编辑器运行
@@ -38,6 +47,7 @@ public class GameCtrl : MonoBehaviour
 
     internal void CancelSelect()
     {
+        UICtrl.instance.actionPanel.SetActive(false);
         curSelect.CancelMove();
         //关闭路径
         GridMeshManager.Instance.DespawnAllPath();
@@ -47,6 +57,8 @@ public class GameCtrl : MonoBehaviour
 
     public void ReleaseSelect()
     {
+
+        UICtrl.instance.actionPanel.SetActive(false);
         //关闭路径
         GridMeshManager.Instance.DespawnAllPath();
 
@@ -56,6 +68,19 @@ public class GameCtrl : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+
+        //防止点击待机UI时进行移动
+
+        if (EventSystem.current.IsPointerOverGameObject())
+        {
+            return;
+        }
+
+        //战斗中不执行操作
+        if (this.battle) return;
+
+
+
         var hitWorldPoint = MouseRaycast();
 
         //跑过去攻击 敌人->记录人物状态（这个时候不再执行鼠标点击逻辑）
@@ -84,17 +109,20 @@ public class GameCtrl : MonoBehaviour
 
 
             //如果当前选择的人物是可控门派，且点击的对象是敌人，且在攻击距离内，则进行攻击
-            if (hitPlayer != null && curSelect != null && curSelect.sect == mySect && hitPlayer.sect != curSelect.sect)
+            if (hitPlayer != null && curSelect != null && curSelect.sect == mySect && hitPlayer.sect != curSelect.sect
+                && curSelect.state == PlayerSate.idle)
             {
                 if (curSelect.InAttackRang(hitPlayer))
                 {
                     Debug.Log("在有效范围 直接攻击敌人");
-                    curSelect.Attack(hitPlayer,true);
+                    SetBattleState();
+                    curSelect.Active_Attack(hitPlayer);
                     this.ReleaseSelect();
                     return;
                 }//并且在移动范围内，就跑过去攻击
                 else if (curSelect.CanMoveAttack(hitPlayer))
                 {
+                    SetBattleState();
                     Debug.Log("不在有效范围 跑过去攻击");
                     curSelect.MoveAttack(hitPlayer);
 
@@ -124,7 +152,11 @@ public class GameCtrl : MonoBehaviour
                     curSelect.ShowMoveRange();
 
                     //如果玩家可控则执行 准备指令
-                    if (curSelect.sect == mySect) curSelect.Ready();
+                    if (curSelect.sect == mySect&& curSelect.state == PlayerSate.idle)
+                    {
+                        curSelect.Ready();
+                        UICtrl.instance.actionPanel.SetActive(true);
+                    }
                 }
             }
             else
@@ -136,7 +168,7 @@ public class GameCtrl : MonoBehaviour
 
                 if (otherSelect == curSelect || otherSelect == null)
                 {
-                    if (curSelect.goMapPos != hitMapPos)
+                    if (curSelect.goMapPos != hitMapPos && curSelect.state == PlayerSate.idle)
                         curSelect.Move(hitMapNode);
                 }
                 else if (otherSelect != curSelect)
@@ -154,9 +186,22 @@ public class GameCtrl : MonoBehaviour
         }
 
     }
+  
 
     void UpdateSelect(PlayerController playerController)
     {
+
+        if (playerController.state == PlayerSate.idle)
+        {
+            UICtrl.instance.actionPanel.SetActive(true);
+            playerController.Ready();
+        }
+        else
+        {
+            UICtrl.instance.actionPanel.SetActive(false);
+        }
+
+        if (curSelect!=null)
         curSelect.CancelMove();
         //关闭路径
         GridMeshManager.Instance.DespawnAllPath();
@@ -229,5 +274,54 @@ public class GameCtrl : MonoBehaviour
 
 
         return t;
+    }
+
+    internal void Wait(bool p_AttackRoundEnd=false)
+    {
+        //throw new NotImplementedException();
+        if (!p_AttackRoundEnd)
+        {
+            this.curSelect.state = PlayerSate.wait;
+            this.ReleaseSelect();
+        }
+
+        var idlePlayer = IdlePlayer(mySect);
+
+        if (idlePlayer != null)
+        {
+            UpdateSelect(idlePlayer);
+        }
+        else
+        {
+            Debug.Log("对手回合！");
+        }
+    }
+
+    private PlayerController IdlePlayer(Sect sect)
+    {
+        foreach (PlayerController item in this.players)
+        {
+            if (item.sect == sect && item.state == PlayerSate.idle) return item;
+        }
+
+        return null;
+    }
+
+    //防止战斗中操作
+    private void SetBattleState()
+    {
+        //throw new NotImplementedException();
+        this.battle = true;
+        attacker = curSelect;
+
+    }
+
+    internal void AttackRoundEnd()
+    {
+       
+        attacker.state = PlayerSate.wait;
+
+        this.battle = false;
+        this.Wait(true);
     }
 }

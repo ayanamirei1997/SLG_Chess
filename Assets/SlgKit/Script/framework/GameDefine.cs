@@ -37,5 +37,6 @@ public class GameDefine
     public enum Sect : uint { TianXuanMen,SiXiangMen }
 
 
-    public enum PlayerSate : uint { idel, moveAttack }
+    // idel 更改为 idle
+    public enum PlayerSate : uint { idle, moveAttack, wait }
 }
