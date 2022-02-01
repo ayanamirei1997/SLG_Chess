@@ -3,12 +3,23 @@ using System.Collections;
 using System.Collections.Generic;
 using Pathfinding;
 using UnityEngine;
+using static GameDefine;
 
 public class GameCtrl : MonoBehaviour
 {
+    public static GameCtrl instance { get; private set; }
+
     PlayerController[] players ;
     private Bounds mapBounds;
     PlayerController curSelect;
+    public Sect mySect;
+
+    private void Awake()
+    {
+        instance = this;
+    }
+
+
     // Start is called before the first frame update
     void Start()
     {
@@ -55,13 +66,28 @@ public class GameCtrl : MonoBehaviour
 
             //通过地图坐标获取人物
             var hitPlayer = SelectPlayer(hitMapPos);
+
+            //假如点击的玩家为不可控制的门派则仅显示移动范围
+            if (hitPlayer != null && hitPlayer.sect != mySect)
+            {
+                if (curSelect != null)
+                {
+                    this.CancelSelect();
+                }
+                hitPlayer.ShowMoveRange();
+
+                return;
+            }
+
             if (curSelect == null)
             {
                 curSelect = hitPlayer;
                 if (curSelect != null)
                 {
                     curSelect.ShowMoveRange();
-                    curSelect.Ready();
+                   
+                    //如果玩家可控则执行 准备指令
+                    if (curSelect.sect==mySect) curSelect.Ready();
                 }
             }
             else
@@ -78,6 +104,7 @@ public class GameCtrl : MonoBehaviour
                 }
                 else if (otherSelect != curSelect)
                 {
+
                     UpdateSelect(hitPlayer);
 
 
@@ -141,4 +168,15 @@ public class GameCtrl : MonoBehaviour
         return null;
     }
 
+    public List<PlayerController> GetEnemy(Sect sect)
+    {
+        List<PlayerController> enemy = new List<PlayerController>();
+        foreach (var item in this.players)
+        {
+            if (item.sect != sect) enemy.Add(item);
+        }
+
+
+        return enemy;
+    }
 }

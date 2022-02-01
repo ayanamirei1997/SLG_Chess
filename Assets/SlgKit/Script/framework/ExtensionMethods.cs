@@ -18,4 +18,16 @@ public static class ExtensionMethods
         return n;
     }
 
+    public static List<GraphNode> ToGraphNode(this List<PlayerController> list)
+    {
+        var n = new List<GraphNode>();
+
+        foreach (var item in list)
+        {
+            n.Add(item.mapNode);
+        }
+
+        return n;
+    }
+
 }

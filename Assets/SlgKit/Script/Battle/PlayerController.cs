@@ -3,16 +3,17 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using static GameDefine;
 
 public class PlayerController : MonoBehaviour
 {
-    int moveRange = 5;
+    public int moveRange = 4;
     public bool canTraverseWater = false;
     // Start is called before the first frame update
-
+    public Sect sect;
     Animator animator;
 
-
+    public Attribute attribute;
     void Start()
     {
         // StartCoroutine(TestUpdate());
@@ -29,6 +30,14 @@ public class PlayerController : MonoBehaviour
         get
         {
             return AstarPath.active.GetNearest((Vector3)this.transform.position).node.position;
+        }
+    }
+
+    public GraphNode mapNode
+    {
+        get
+        {
+            return AstarPath.active.GetNearest((Vector3)this.transform.position).node;
         }
     }
 
@@ -77,13 +86,45 @@ public class PlayerController : MonoBehaviour
     [ContextMenu("显示范围")]
     public void ShowMoveRange()
     {
-        GetMovePath((Path path) =>
+        GetMovePath((Path movePath) =>
         {
-            GridMeshManager.Instance.ShowPath(path.path);
-            moveRangePath = path.path;
+            //GridMeshManager.Instance.ShowPath(movePath.path);
+            moveRangePath = movePath.path;
+
+         var strikingRange = new List<GraphNode>();
+            var progress = 0;
+            foreach (var node in movePath.path)
+            {
+                GetStrikingRange(node,(Path strPath) =>
+                {
+                    
+                    foreach (var pNode in strPath.path)
+                    {
+                        if (!strikingRange.Contains(pNode))
+                            strikingRange.Add(pNode);
+                    }
+                    
+                    progress += 1;
+                  
+                    if (progress >= movePath.path.Count)
+                    {
+                        //计算完成
+                        //显示范围=攻击范围 减去 移动范围
+                        strikingRange = strikingRange.FindAll(t => !movePath.path.Contains(t));
+                        GridMeshManager.Instance.ShowPath(movePath.path);
+                        GridMeshManager.Instance.StrRangePath(strikingRange);
+                    }
+
+
+                });
+            }
+            
         }
         );
+
+
     }
+
 
     public void CancelMove()
     {
@@ -120,9 +161,9 @@ public class PlayerController : MonoBehaviour
 
     void OnAbPathCompelet(ABPath ab_path)
     {
-        
-        GridMeshManager.Instance.ShowPathRed(ab_path.path);
-         MoveAnimation(ab_path.path.toPos());
+
+        GridMeshManager.Instance.ShowPathWhite(ab_path.path);
+        MoveAnimation(ab_path.path.toPos());
     }
 
     void MoveAnimation(List<Vector3> pos)
@@ -131,10 +172,10 @@ public class PlayerController : MonoBehaviour
         this.animator.CrossFade("run", 0.2f);
 
         if (moveCor != null) StopCoroutine(moveCor);
-        
+
         moveCor = StartCoroutine(this.CMoveUpdate(pos, this.transform));
     }
-    
+
     //l=路程，s=速度,t3=两点坐标的插值
     //t1 = (l)s
     //t2=(l-s)s
@@ -163,7 +204,7 @@ public class PlayerController : MonoBehaviour
             //因为是每帧执行，帧数的高低会由手机的性能决定
             //为了让不同性能的硬件保持移动速度一致，需要速度乘以两帧之间的渲染间隔
             //假如不加的话性能高的机器则很快移动完毕，性能低机器则反之
-            var speed = this.moveSpeed *Time.deltaTime;
+            var speed = this.moveSpeed * Time.deltaTime;
             var curdistance = Vector3.Distance(_position, _finalPosition);
             var remaining_distance = curdistance - speed;
             var t3 = 1f;
@@ -174,9 +215,9 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                var t1 = curdistance/speed;
-                var t2 = remaining_distance/speed;
-                t3 = 1 - t2/t1;
+                var t1 = curdistance / speed;
+                var t2 = remaining_distance / speed;
+                t3 = 1 - t2 / t1;
             }
 
 
@@ -200,7 +241,7 @@ public class PlayerController : MonoBehaviour
 
             transform.position = outpos;
 
-            
+
         }
 
         MoveStop();
@@ -210,7 +251,7 @@ public class PlayerController : MonoBehaviour
     {
         this.animator.CrossFade("idle", 0.2f);
     }
-    
+
 
     /// <summary>
     /// 获取移动路径
@@ -220,7 +261,14 @@ public class PlayerController : MonoBehaviour
     {
         var moveGScore = this.moveRange * 1000 * 3;
 
-        var SerchPath = MoveRangConStantPath.Construct(this.transform.position, moveGScore, canTraverseWater,
+        List<PlayerController> enemy = GameCtrl.instance.GetEnemy(this.sect);
+
+        var enemyNodes = enemy.ToGraphNode();
+
+        //  var SerchPath = MoveRangConStantPath.Construct(this.transform.position, moveGScore, canTraverseWater,
+
+        var SerchPath = MoveRangConStantPath.ConstructEnemy(this.transform.position, moveGScore, canTraverseWater, enemyNodes,
+
         (Path path) =>
         {
             path.path = (path as MoveRangConStantPath).allNodes;
@@ -232,6 +280,33 @@ public class PlayerController : MonoBehaviour
         //异步返回搜索结果
         AstarPath.StartPath(SerchPath, true);
     }
+
+    /// <summary>
+    /// 获取攻击距离
+    /// </summary>
+    public void GetStrikingRange(GraphNode node, System.Action<Path> OnPathSerchOkCallBack)
+    {
+        var moveGScore = ((int)this.attribute.striking_Range_Max+1) * 1000 * 3;
+
+        var SerchPath = StrikingRangePath.Construct((Vector3)node.position, moveGScore,
+
+
+
+        (Path path) =>
+        {
+            path.path = (path as StrikingRangePath).allNodes;
+            OnPathSerchOkCallBack.Invoke(path);
+
+        }
+
+        );
+        //异步返回搜索结果
+        AstarPath.StartPath(SerchPath, true);
+    }
+
+
+
+
 
     public Transform target;
     private Vector3 startMovePos;
@@ -256,7 +331,7 @@ public class PlayerController : MonoBehaviour
     public void GetMoveABPathCallback(Vector3 p_start, Vector3 end, System.Action<ABPath> v_path)
     {
         Vector3 p_endpos = (Vector3)AstarPath.active.GetNearest(end, new NNCPlayerMove()).node.position;
-        ABPathExt mPath = ABPathExt.ConstructRange(p_start, p_endpos,this.moveRangePath,
+        ABPathExt mPath = ABPathExt.ConstructRange(p_start, p_endpos, this.moveRangePath,
              (Path path) =>
              {
                  ABPathExt m_path = path as ABPathExt;

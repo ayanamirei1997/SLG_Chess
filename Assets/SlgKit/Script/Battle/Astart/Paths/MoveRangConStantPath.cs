@@ -11,7 +11,7 @@ public class MoveRangConStantPath : Path
 
     public bool canTraverseWater = false;
 
-
+    List<GraphNode> enemy;
 
     //重写了 遍历节点的方法，标识哪些节点不可被穿越
      public override bool CanTraverse(GraphNode node)
@@ -27,9 +27,25 @@ public class MoveRangConStantPath : Path
             return false;
         }
 
+        //第4节课，敌人路径
+        if (enemy!=null)
+        {
+            if (enemy.Contains(node)) return false;
+        }
+
         return base.CanTraverse(node);
     }
 
+    public static MoveRangConStantPath ConstructEnemy(Vector3 start, int maxGScore, bool canTraverseWater, List<GraphNode> enemy, OnPathDelegate callback = null)
+    {
+        MoveRangConStantPath p = PathPool<MoveRangConStantPath>.GetPath();
+        p.canTraverseWater = canTraverseWater;
+
+
+        p.Setup(start, maxGScore, callback);
+        p.enemy = enemy;
+        return p;
+    }
 
     public GraphNode startNode;
     public Vector3 startPoint;
@@ -70,6 +86,9 @@ public class MoveRangConStantPath : Path
         p.Setup(start, maxGScore, callback);
         return p;
     }
+
+ 
+
 
     /** Sets up a ConstantPath starting from the specified point */
     protected void Setup(Vector3 start, int maxGScore, OnPathDelegate callback)

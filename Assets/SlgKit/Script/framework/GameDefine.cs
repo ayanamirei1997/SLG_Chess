@@ -30,4 +30,9 @@ public class GameDefine
 
         return mTagNames;
     }
+
+    //天地劫中两个闹得最僵的门派
+    //天玄门 和 四象门
+    //他们是敌对关系
+    public enum Sect : uint { TianXuanMen,SiXiangMen }
 }

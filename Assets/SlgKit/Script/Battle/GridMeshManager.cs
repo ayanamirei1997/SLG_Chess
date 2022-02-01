@@ -12,10 +12,12 @@ public class GridMeshManager : Singleton<GridMeshManager>
 {
 
     SpawnPool m_PoolGreenMesh;
-    SpawnPool m_Pool_RedMesh;
+    SpawnPool m_Pool_whiteMesh;
     GameObject mouse_Quad;
     float node_size = 0;
 
+
+    SpawnPool m_Pool_strRangeMesh;
     public GridMeshManager()
     {
         node_size = (AstarPath.active.graphs[0] as GridGraph).nodeSize;
@@ -25,14 +27,19 @@ public class GridMeshManager : Singleton<GridMeshManager>
         i_Go_green.SetActive(true);
         m_PoolGreenMesh = i_Go_green.GetComponent<SpawnPool>();
 
-        var pool_Go_red = Resources.Load<GameObject>("Prefab/PoolItem/Pool_RedMesh");
+        var pool_Go_red = Resources.Load<GameObject>("Prefab/PoolItem/Pool_WhiteMesh");
         var i_red_Go = GameObject.Instantiate(pool_Go_red);
         i_red_Go.SetActive(true);
-        m_Pool_RedMesh = i_red_Go.GetComponent<SpawnPool>();
+        m_Pool_whiteMesh = i_red_Go.GetComponent<SpawnPool>();
 
-       // mouse_Quad = GameObject.Instantiate(Resources.Load<GameObject>("Prefab/PoolItem/mouse_Quad"));
-      //  mouse_Quad.transform.localRotation = Quaternion.Euler(90, 0, 0);
-      //  mouse_Quad.transform.localScale = new Vector3(node_size, node_size, 1);
+        var sktR_pool_Go_red = Resources.Load<GameObject>("Prefab/PoolItem/Pool_RedMesh");
+        var sktR_red_Go = GameObject.Instantiate(sktR_pool_Go_red);
+        sktR_red_Go.SetActive(true);
+        m_Pool_strRangeMesh = sktR_red_Go.GetComponent<SpawnPool>();
+
+        // mouse_Quad = GameObject.Instantiate(Resources.Load<GameObject>("Prefab/PoolItem/mouse_Quad"));
+        //  mouse_Quad.transform.localRotation = Quaternion.Euler(90, 0, 0);
+        //  mouse_Quad.transform.localScale = new Vector3(node_size, node_size, 1);
     }
 
     
@@ -53,15 +60,24 @@ public class GridMeshManager : Singleton<GridMeshManager>
     public  void DespawnAllPath()
     {
         m_PoolGreenMesh.DespawnAll();
-        m_Pool_RedMesh.DespawnAll();
+        m_Pool_whiteMesh.DespawnAll();
+        m_Pool_strRangeMesh.DespawnAll();
     }
 
-    public void ShowPathRed(List<GraphNode> obj)
+    public void ShowPathWhite(List<GraphNode> obj)
     {
 
-        m_Pool_RedMesh.DespawnAll();
+        m_Pool_whiteMesh.DespawnAll();
 
-        DarwPath(this.m_Pool_RedMesh, "red_Quad", obj,0.15f,0.8f);
+        DarwPath(this.m_Pool_whiteMesh, "white_Quad", obj,0.2f,0.8f);
+    }
+
+    public void StrRangePath(List<GraphNode> obj)
+    {
+
+        m_Pool_strRangeMesh.DespawnAll();
+
+        DarwPath(this.m_Pool_strRangeMesh, "red_Quad", obj, 0.15f, 1f);
     }
 
 
