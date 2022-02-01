@@ -3,6 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
+
+
+
 public class ABPathExt : ABPath
 {
     public bool canTraverseWater = false;
@@ -23,6 +27,8 @@ public class ABPathExt : ABPath
 
         return p;
     }
+
+
 
 
     public override bool CanTraverse(GraphNode node)

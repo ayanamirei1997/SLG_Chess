@@ -9,22 +9,9 @@ public class PlayerController : MonoBehaviour
 {
     public int moveRange = 4;
     public bool canTraverseWater = false;
-    // Start is called before the first frame update
     public Sect sect;
     Animator animator;
-
     public Attribute attribute;
-    void Start()
-    {
-        // StartCoroutine(TestUpdate());
-
-        //  StartCoroutine(TestUpdateAB_path());
-
-        animator = GetComponent<Animator>();
-
-        worldPos2MapPos();
-    }
-
     public Int3 mapPos
     {
         get
@@ -32,7 +19,6 @@ public class PlayerController : MonoBehaviour
             return AstarPath.active.GetNearest((Vector3)this.transform.position).node.position;
         }
     }
-
     public GraphNode mapNode
     {
         get
@@ -40,6 +26,16 @@ public class PlayerController : MonoBehaviour
             return AstarPath.active.GetNearest((Vector3)this.transform.position).node;
         }
     }
+    public Transform target;
+    private Vector3 startMovePos;
+    internal Int3? goMapPos;
+    private List<GraphNode> moveRangePath;
+    private List<GraphNode> strikingRange;
+    public float moveSpeed;
+    private Coroutine moveCor;
+    private List<GraphNode> normalStrikingRangen = new List<GraphNode>();
+    public PlayerSate state;
+    private PlayerController attackTarget;
 
     void worldPos2MapPos()
     {
@@ -50,7 +46,16 @@ public class PlayerController : MonoBehaviour
     }
 
 
+    void Start()
+    {
+        // StartCoroutine(TestUpdate());
 
+        //  StartCoroutine(TestUpdateAB_path());
+
+        animator = GetComponent<Animator>();
+
+        worldPos2MapPos();
+    }
 
     // Update is called once per frame
     void Update()
@@ -91,21 +96,32 @@ public class PlayerController : MonoBehaviour
             //GridMeshManager.Instance.ShowPath(movePath.path);
             moveRangePath = movePath.path;
 
-         var strikingRange = new List<GraphNode>();
+            this.strikingRange = new List<GraphNode>();
             var progress = 0;
+
+            var otherPlayers = GameCtrl.instance.GetPlayersMapNode();
+            otherPlayers.Remove(this.mapNode);
             foreach (var node in movePath.path)
             {
-                GetStrikingRange(node,(Path strPath) =>
+                //在移动范围预查找攻击范围时，对有人物占位的节点进行忽略
+                if (otherPlayers.Contains(node))
                 {
-                    
+                    progress += 1;
+                    continue;
+                }
+
+
+                GetStrikingRange(node, attribute.striking_Range_Min, attribute.striking_Range_Max, (Path strPath) =>
+                {
+
                     foreach (var pNode in strPath.path)
                     {
                         if (!strikingRange.Contains(pNode))
                             strikingRange.Add(pNode);
                     }
-                    
+
                     progress += 1;
-                  
+
                     if (progress >= movePath.path.Count)
                     {
                         //计算完成
@@ -118,13 +134,108 @@ public class PlayerController : MonoBehaviour
 
                 });
             }
-            
+
         }
         );
 
+        normalStrikingRangen.Clear();
 
+        GetStrikingRange(this.mapNode, attribute.striking_Range_Min, attribute.striking_Range_Max, (r_path) => {
+            normalStrikingRangen.AddRange(r_path.path);
+        });
     }
 
+    internal void MoveAttack(PlayerController target)
+    {
+        // throw new NotImplementedException();
+
+        state = GameDefine.PlayerSate.moveAttack;
+        if (this.moveRangePath == null) return;
+        attackTarget = target;
+        e_moveStop -= MoveAnimaStop2Attack;
+        e_moveStop += MoveAnimaStop2Attack;
+
+
+
+        StartCoroutine(GetMove2EnemyPath(this.transform.position, target.transform.position, this.attribute.striking_Range_Min, (ab_Path) =>
+        {
+
+
+            //为了能在vs里断点调试该方法
+            this.OnAbPathCompelet(ab_Path);
+            this.goMapPos = target.mapPos;
+
+        }));
+    }
+
+    private void MoveAnimaStop2Attack()
+    {
+        this.Attack(attackTarget,true);
+    }
+
+    public IEnumerator GetMove2EnemyPath(Vector3 p_start, Vector3 end, uint minRange, System.Action<ABPath> v_path)
+    {
+
+        var minLength = ((int)minRange + 1) * 1000 * 3;
+        //以敌人为中心生成最小攻击范围
+        var unwalkePath = StrikingRangePath.Construct(end, minLength);
+        AstarPath.StartPath(unwalkePath, true);
+
+        yield return StartCoroutine(unwalkePath.WaitForPath());
+
+        var otherPlayersMapNode = GameCtrl.instance.GetPlayersMapNode();
+        otherPlayersMapNode.Remove(this.mapNode);
+        var serchNode = this.moveRangePath.FindAll(s => !unwalkePath.allNodes.Contains(s) && !otherPlayersMapNode.Contains(s));
+
+        //约束规则
+        var nnc = new NNCPlayerMove();
+        //符合条件的节点必须满足
+        //1 在移动范围之内
+        // 2 不能有玩家
+        nnc.moveRangePath = serchNode;
+        nnc.playersMapNode = otherPlayersMapNode;
+        //返回的结果是在移动路径上距离敌人的坐标
+
+        var p_Node = AstarPath.active.GetNearest(end, nnc).node;
+
+        Vector3 p_endpos = (Vector3)p_Node.position;
+
+        /* Test
+         var testView = new List<GraphNode>();
+         testView.Add(p_Node);
+         GridMeshManager.Instance.ShowPathWhite(testView);
+         return;
+         */
+        ABPathExt mPath = ABPathExt.ConstructRange(p_start, p_endpos, this.moveRangePath,
+             (Path path) =>
+             {
+                 ABPathExt m_path = path as ABPathExt;
+
+                 v_path(m_path);
+
+             }
+             );
+        mPath.canTraverseWater = this.canTraverseWater;
+
+        AstarPath.StartPath(mPath, true);
+    }
+
+
+
+
+    internal bool CanMoveAttack(PlayerController hitPlayer)
+    {
+        // throw new NotImplementedException();
+        return this.strikingRange.Contains(hitPlayer.mapNode);
+    }
+
+   
+
+    internal bool InAttackRang(PlayerController hitPlayer)
+    {
+        // throw new NotImplementedException();
+        return normalStrikingRangen.Contains(hitPlayer.mapNode);
+    }
 
     public void CancelMove()
     {
@@ -246,10 +357,21 @@ public class PlayerController : MonoBehaviour
 
         MoveStop();
     }
-
+    System.Action e_moveStop;
     void MoveStop()
     {
         this.animator.CrossFade("idle", 0.2f);
+
+        //考虑到项目后期 会有很多功能会在这个时机 进行执行
+        //比如 停止移动后显示UI
+        //停止之后 播放声音
+        //停止之后 .........
+
+        //为了进行代码的松耦合，这里我们要使用委托或事件
+
+        if (e_moveStop != null) e_moveStop.Invoke();
+
+
     }
 
 
@@ -281,39 +403,13 @@ public class PlayerController : MonoBehaviour
         AstarPath.StartPath(SerchPath, true);
     }
 
-    /// <summary>
-    /// 获取攻击距离
-    /// </summary>
-    public void GetStrikingRange(GraphNode node, System.Action<Path> OnPathSerchOkCallBack)
-    {
-        var moveGScore = ((int)this.attribute.striking_Range_Max+1) * 1000 * 3;
-
-        var SerchPath = StrikingRangePath.Construct((Vector3)node.position, moveGScore,
-
-
-
-        (Path path) =>
-        {
-            path.path = (path as StrikingRangePath).allNodes;
-            OnPathSerchOkCallBack.Invoke(path);
-
-        }
-
-        );
-        //异步返回搜索结果
-        AstarPath.StartPath(SerchPath, true);
-    }
 
 
 
 
 
-    public Transform target;
-    private Vector3 startMovePos;
-    internal Int3? goMapPos;
-    private List<GraphNode> moveRangePath;
-    public float moveSpeed;
-    private Coroutine moveCor;
+
+
 
     void ShowAB_Path()
     {
@@ -351,6 +447,264 @@ public class PlayerController : MonoBehaviour
 
 
 
+    /// <summary>
+    /// 获取攻击距离
+    /// </summary>
+    public void GetStrikingRange(GraphNode node, uint minRange, uint maxRange, System.Action<Path> OnPathSerchOkCallBack)
+    {
+        var moveGScore = ((int)this.attribute.striking_Range_Max + 1) * 1000 * 3;
+
+        var SerchPath = StrikingRangePath.Construct((Vector3)node.position, moveGScore,
 
 
+        //搜索的最大攻击范围
+        (Path path) =>
+        {
+            // path.path = (path as StrikingRangePath).allNodes;
+            // OnPathSerchOkCallBack.Invoke(path);
+            //搜索最小攻击范围
+            this._GetStrikingRange_min(path, node, minRange, OnPathSerchOkCallBack);
+        }
+
+        );
+        //异步返回搜索结果
+        AstarPath.StartPath(SerchPath, true);
+    }
+
+    private void _GetStrikingRange_min(Path maxPath, GraphNode node, uint minRange, System.Action<Path> OnPathSerchOkCallBack)
+    {
+        var minLength = ((int)minRange + 1) * 1000 * 3;
+
+        maxPath.path = (maxPath as StrikingRangePath).allNodes;
+
+        var minPath = StrikingRangePath.Construct((Vector3)node.position, minLength,
+        (Path p_minPath) =>
+        {
+
+            p_minPath.path = (p_minPath as StrikingRangePath).allNodes;
+            // OnPathSerchOkCallBack.Invoke(path);
+            //大范围减去小范围== 两个集合的差集
+            var resulePath = new StrikingRangePath();
+            resulePath.path = maxPath.path.FindAll(s => !p_minPath.path.Contains(s));
+
+            OnPathSerchOkCallBack.Invoke(resulePath);
+        });
+
+        AstarPath.StartPath(minPath, true);
+    }
+
+
+
+
+
+    [ContextMenu("显示射程")]
+    void _TestShowStrikingRange()
+    {
+        GetStrikingRange(this.mapNode, attribute.striking_Range_Min, attribute.striking_Range_Max, (r_path) =>
+        {
+
+            GridMeshManager.Instance.ShowPathWhite(r_path.path);
+        });
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="target"></param>
+    /// <param name="targetCanStrikeBack">是否能还击</param>
+    internal void Attack(PlayerController target, bool targetCanStrikeBack)
+    {
+        // throw new NotImplementedException();
+
+        this.lookatTarget(target);
+
+        uint dps = this.attribute.atk - target.attribute.def;
+        // target.attribute.hp -= dps;
+        //防止数值溢出
+        if (target.attribute.hp <= dps)
+        {
+            target.attribute.hp = 0;
+        }
+        else
+        {
+            target.attribute.hp -= dps;
+        }
+
+
+
+        Debug.Log("攻击了敌人 造成了" + dps + "点伤害");
+        GameCtrl.instance.ReleaseSelect();
+
+         float[] hitFrames = new float[2] { 0.12f, 0.55f };
+        //动作值，总和为1 动作值越大 显示的伤害越高，
+        //比如 平砍 和 跳砍 因为跳砍的力量更大，所以显示的伤害越高,具体怎么分配还要看策划设定
+         int[] dpsView = CalculateDps((int)dps, new float[] { 0.8f, 0.2f });
+
+        StartCoroutine(AnimationAttack("attack01", hitFrames, dpsView, targetCanStrikeBack, target));
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="stateName"></param>
+    /// <param name="frames"></param>
+    /// <param name="dpsView"></param>
+    /// <param name="targetCanStrikeBack">是否能还击</param>
+    /// <param name="StrikeDis">攻击距离</param>
+    /// <param name="damageTarget"></param>
+    /// <returns></returns>
+    IEnumerator AnimationAttack(string stateName, float[] frames, int[] dpsView, bool targetCanStrikeBack, PlayerController damageTarget)
+    {
+
+
+
+        this.animator.CrossFade(stateName, 0.2f);
+        //int curFrame = 0;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            var waitframes = frames[i];
+            // for (int j = 0; j < waitframes; j++)
+            while (true)
+            {
+                var info = this.animator.GetCurrentAnimatorStateInfo(0);
+                yield return new WaitForEndOfFrame();
+                if (info.IsName(stateName) && info.normalizedTime >= waitframes) break;
+
+            }
+
+            //输出动动作伤害数值
+            Debug.Log("动画 伤害" + dpsView[i]);
+            damageTarget.Damage_Ani();
+        }
+
+
+        while (true)
+        {
+            var info = this.animator.GetCurrentAnimatorStateInfo(0);
+            yield return new WaitForEndOfFrame();
+            if (info.IsName("idle")) break;
+
+        }
+        //攻击动画结束
+        Debug.Log("攻击结束");
+        if (targetCanStrikeBack)
+        {
+            damageTarget.UnderAttack(this);
+        }
+        else
+        {
+            Debug.Log("对阵结束");
+            AttackRoundEnd(this, damageTarget);
+        }
+    }
+
+    void Damage_Ani()
+    {
+        this.animator.Play("damage01", 0, 0);
+    }
+
+    void lookatTarget(PlayerController target)
+    {
+        this.transform.LookAt(target.transform);
+        var localEulerAngles = this.transform.localEulerAngles;
+
+        //只需要Y轴旋转
+        localEulerAngles.x = 0;
+        localEulerAngles.z = 0;
+
+        this.transform.localEulerAngles = localEulerAngles;
+    }
+
+    //受到攻击
+    void UnderAttack(PlayerController attacker)
+    {
+        lookatTarget(attacker);
+
+        if (this.attribute.hp <= 0)
+        {
+            this.animator.CrossFade("death", 0.2f);
+            Debug.Log("阵亡 对阵结束");
+            AttackRoundEnd(this, attacker);
+        }
+        else
+        {
+            this.StartCoroutine(C_UnderAttack(attacker));
+        }
+    }
+
+       IEnumerator C_UnderAttack(PlayerController attacker)
+    {
+        //计算攻击距离
+
+        var strikeNode = this.mapNode;
+
+        var attackerNode = attacker.mapNode;
+
+        var abpath = StrikingRangeABPath.Construct((Vector3)strikeNode.position, (Vector3)attackerNode.position);
+        AstarPath.StartPath(abpath);
+        yield return StartCoroutine(abpath.WaitForPath());
+        var dis = abpath.path.Count - 2;
+        Debug.Log("攻击距离" + dis);
+        //贴身距离为0
+        //弓手距离为1
+        //在有效射程才能反击
+        if (this.attribute.striking_Range_Max > dis && this.attribute.striking_Range_Min <= dis)
+        {
+            this.Attack(attacker, false);
+        }else
+        {
+            AttackRoundEnd(this, attacker);
+            Debug.Log("无法还击 对阵结束");
+        }
+    }
+
+
+
+
+    void AttackRoundEnd(PlayerController a, PlayerController b)
+    {
+        a.state = PlayerSate.idel;
+        b.state = PlayerSate.idel;
+    }
+
+
+
+
+
+    //血量分配
+    int[] CalculateDps(int dps, float[] range)
+    {
+        int[] o_dps = new int[range.Length];
+        for (int i = 0; i < range.Length - 1; i++)
+        {
+            o_dps[i] = Mathf.FloorToInt(dps * range[i]);
+            dps -= o_dps[i];
+        }
+
+        //分配剩余的数值
+        o_dps[range.Length - 1] = dps;
+
+        return o_dps;
+    }
+
+
+    [ContextMenu("输出分配测试")]
+    void Test_CalculateDps()
+    {
+        var i = CalculateDps(9, new float[] { 0.3f, 0.7f });
+        string resulte = "";
+        foreach (var item in i) resulte += item + " 和";
+        Debug.Log(9 + "分成" + resulte.Substring(0, resulte.Length - 1));
+        //9分成2 和7 
+
+        resulte = ""; i = CalculateDps(4, new float[] { 0.3f, 0.7f });
+        foreach (var item in i) resulte += item + "  和";
+        Debug.Log(4 + "分成" + resulte.Substring(0, resulte.Length - 1));
+        //4分成1 和3
+
+        resulte = ""; i = CalculateDps(56, new float[] { 0.3f, 0.3f, 0.4f });
+        foreach (var item in i) resulte += item + "  和";
+        Debug.Log(56 + "分成" + resulte.Substring(0, resulte.Length - 1));
+        //56分成16  和12  和28
+    }
 }

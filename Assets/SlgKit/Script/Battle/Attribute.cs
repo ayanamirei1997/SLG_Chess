@@ -6,6 +6,10 @@ using System.Collections.Generic;
 public class Attribute 
 {
     /// <summary>
+    /// 血量
+    /// </summary>
+    public uint hp = 0;
+    /// <summary>
     /// 攻击力
     /// </summary>
     public uint atk=0;
@@ -18,7 +22,9 @@ public class Attribute
     /// 攻击距离
     /// Striking Range
     /// </summary>
+    /// 
+    public uint striking_Range_Min = 1;
     public uint striking_Range_Max =1 ;
 
-    public uint striking_Range_Min = 1;
+
 }

@@ -9,7 +9,7 @@ public class GameCtrl : MonoBehaviour
 {
     public static GameCtrl instance { get; private set; }
 
-    PlayerController[] players ;
+     PlayerController[] players;
     private Bounds mapBounds;
     PlayerController curSelect;
     public Sect mySect;
@@ -24,10 +24,10 @@ public class GameCtrl : MonoBehaviour
     void Start()
     {
         players = GameObject.FindObjectsOfType<PlayerController>();
-       
+
         var gridGraph = (AstarPath.active.graphs[0] as GridGraph);
         var size = gridGraph.nodeSize;
-        mapBounds = new Bounds(gridGraph.center, new Vector3(gridGraph .width* size,10, size* gridGraph.depth));
+        mapBounds = new Bounds(gridGraph.center, new Vector3(gridGraph.width * size, 10, size * gridGraph.depth));
     }
 
     //包围盒范围测试，只在编辑器运行
@@ -44,10 +44,25 @@ public class GameCtrl : MonoBehaviour
 
         curSelect = null;
     }
+
+    public void ReleaseSelect()
+    {
+        //关闭路径
+        GridMeshManager.Instance.DespawnAllPath();
+
+        curSelect = null;
+    }
+
     // Update is called once per frame
     void Update()
     {
         var hitWorldPoint = MouseRaycast();
+
+        //跑过去攻击 敌人->记录人物状态（这个时候不再执行鼠标点击逻辑）
+        if (curSelect != null && curSelect.state == PlayerSate.moveAttack)
+        {
+            return;
+        }
 
         if (hitWorldPoint != null)
         {
@@ -67,6 +82,28 @@ public class GameCtrl : MonoBehaviour
             //通过地图坐标获取人物
             var hitPlayer = SelectPlayer(hitMapPos);
 
+
+            //如果当前选择的人物是可控门派，且点击的对象是敌人，且在攻击距离内，则进行攻击
+            if (hitPlayer != null && curSelect != null && curSelect.sect == mySect && hitPlayer.sect != curSelect.sect)
+            {
+                if (curSelect.InAttackRang(hitPlayer))
+                {
+                    Debug.Log("在有效范围 直接攻击敌人");
+                    curSelect.Attack(hitPlayer,true);
+                    this.ReleaseSelect();
+                    return;
+                }//并且在移动范围内，就跑过去攻击
+                else if (curSelect.CanMoveAttack(hitPlayer))
+                {
+                    Debug.Log("不在有效范围 跑过去攻击");
+                    curSelect.MoveAttack(hitPlayer);
+
+                    return;
+                }
+
+            }
+
+
             //假如点击的玩家为不可控制的门派则仅显示移动范围
             if (hitPlayer != null && hitPlayer.sect != mySect)
             {
@@ -85,9 +122,9 @@ public class GameCtrl : MonoBehaviour
                 if (curSelect != null)
                 {
                     curSelect.ShowMoveRange();
-                   
+
                     //如果玩家可控则执行 准备指令
-                    if (curSelect.sect==mySect) curSelect.Ready();
+                    if (curSelect.sect == mySect) curSelect.Ready();
                 }
             }
             else
@@ -105,7 +142,9 @@ public class GameCtrl : MonoBehaviour
                 else if (otherSelect != curSelect)
                 {
 
+
                     UpdateSelect(hitPlayer);
+
 
 
                 }
@@ -140,7 +179,7 @@ public class GameCtrl : MonoBehaviour
         return null;
     }
 
-  
+
 
 
 
@@ -178,5 +217,17 @@ public class GameCtrl : MonoBehaviour
 
 
         return enemy;
+    }
+
+    internal List<GraphNode> GetPlayersMapNode()
+    {
+        List<GraphNode> t = new List<GraphNode>();
+        foreach (var item in this.players)
+        {
+            t.Add(item.mapNode);
+        }
+
+
+        return t;
     }
 }

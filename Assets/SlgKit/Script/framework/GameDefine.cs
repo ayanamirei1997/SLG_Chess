@@ -35,4 +35,7 @@ public class GameDefine
     //天玄门 和 四象门
     //他们是敌对关系
     public enum Sect : uint { TianXuanMen,SiXiangMen }
+
+
+    public enum PlayerSate : uint { idel, moveAttack }
 }
